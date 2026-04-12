@@ -130,6 +130,43 @@ func Highlight():
 			highlight.show()
 
 
+# --- ShowContext ------------------------------------------------------------
+# When the player right-clicks a weapon in an equipped slot (Primary/Secondary
+# or any other equipment slot), the base ShowContext() sets contextSlot but
+# leaves contextGrid null. Context.gd gates the "Unload"/"Clear Chamber"
+# button on contextGrid being non-null, so the button never appears for
+# equipped weapons. Pre-setting contextGrid = inventoryGrid before calling
+# super fixes this: the super's hoverSlot branch never touches contextGrid,
+# so our value persists through context.Update() and the button shows up.
+
+func ShowContext():
+	if hoverSlot && hoverSlot.get_child_count() != 0:
+		var slotItem = hoverSlot.get_child(0)
+		if slotItem.slotData.itemData.type == "Weapon":
+			contextGrid = inventoryGrid
+	super.ShowContext()
+
+
+# --- UnloadWeapon -----------------------------------------------------------
+# After the base async unload finishes, refresh the weapon rig when the weapon
+# was actively held in the Primary or Secondary slot.
+
+func UnloadWeapon(targetItem, targetGrid):
+	# Capture the slot name before the base Reset() clears contextSlot.
+	var equippedSlotName = ""
+	if contextSlot:
+		equippedSlotName = contextSlot.name
+
+	await super.UnloadWeapon(targetItem, targetGrid)
+
+	if equippedSlotName != "":
+		if ((equippedSlotName == "Primary" && gameData.primary)
+				|| (equippedSlotName == "Secondary" && gameData.secondary)):
+			rigManager.UpdateRig(true)
+		else:
+			rigManager.UpdateRig(false)
+
+
 # --- Reset ------------------------------------------------------------------
 # Clear canChamberRound alongside all the base state.
 
