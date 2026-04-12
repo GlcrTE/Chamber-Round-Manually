@@ -85,7 +85,7 @@ func ChamberRound(targetItem):
 	add_child(newProgress)
 	newProgress.global_position = targetItem.global_position
 	newProgress.size = targetItem.size
-	newProgress.Use(1.0)
+	newProgress.Use(0.5)
 	activeProgress = newProgress
 
 	await activeProgress.completed
