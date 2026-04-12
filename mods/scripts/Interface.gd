@@ -64,7 +64,7 @@ func Release():
 		else:
 			Return(itemDragged)
 			Reset()
-		PlayClick()
+		PlayAmmoLoad()
 		return
 
 	super.Release()
@@ -136,3 +136,13 @@ func Highlight():
 func Reset():
 	canChamberRound = false
 	super.Reset()
+
+
+# --- PlayAmmoLoad -----------------------------------------------------------
+# Play the same ammo-load sound the base game uses when clearing the chamber
+# (audioLibrary.ammoLoad is inherited from the base Interface.gd preload).
+
+func PlayAmmoLoad():
+	var audio = audioInstance2D.instantiate()
+	add_child(audio)
+	audio.PlayInstance(audioLibrary.ammoLoad)
