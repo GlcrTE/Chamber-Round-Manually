@@ -58,13 +58,12 @@ func Hover():
 func Release():
 	if canChamberRound:
 		if hoverItem:
-			ChamberRound(hoverItem)
+			await ChamberRound(hoverItem)
 		elif hoverSlot && hoverSlot.get_child_count() != 0:
-			ChamberRound(hoverSlot.get_child(0))
+			await ChamberRound(hoverSlot.get_child(0))
 		else:
 			Return(itemDragged)
 			Reset()
-		PlayAmmoLoad()
 		return
 
 	super.Release()
@@ -78,35 +77,55 @@ func Release():
 func ChamberRound(targetItem):
 	var combineItem = itemDragged
 
-	# Mark the weapon chamber as loaded.
-	targetItem.slotData.chamber = true
-	targetItem.UpdateDetails()
-	targetItem.UpdateSprite()
+	gameData.isOccupied = true
 
-	# Consume one round.
-	combineItem.slotData.amount -= 1
+	# Show the red-tinted progress circle over the weapon item (matches the
+	# same visual used when clearing the chamber via UnloadWeapon).
+	var newProgress = progress.instantiate()
+	add_child(newProgress)
+	newProgress.global_position = targetItem.global_position
+	newProgress.size = targetItem.size
+	newProgress.Use(1.0)
+	activeProgress = newProgress
 
-	if combineItem.slotData.amount <= 0:
-		# Stack is empty — remove it entirely.
-		if returnGrid:
-			returnGrid.Pick(combineItem)
-		combineItem.queue_free()
-	else:
-		# Return the reduced stack to its original grid position.
-		Return(combineItem)
-		combineItem.UpdateDetails()
+	await activeProgress.completed
+	if gameData.isDead: return
 
-	# When the weapon is actively held in a rig slot, trigger the rig update
-	# so the slide/hammer animations reflect the new chambered state.
-	if hoverSlot:
-		var slotName = hoverSlot.name
-		if ((slotName == "Primary" && gameData.primary)
-				|| (slotName == "Secondary" && gameData.secondary)):
-			rigManager.UpdateRig(true)
+	if activeProgress:
+		# Mark the weapon chamber as loaded.
+		targetItem.slotData.chamber = true
+		targetItem.UpdateDetails()
+		targetItem.UpdateSprite()
+
+		# Consume one round.
+		combineItem.slotData.amount -= 1
+
+		if combineItem.slotData.amount <= 0:
+			# Stack is empty — remove it entirely.
+			if returnGrid:
+				returnGrid.Pick(combineItem)
+			combineItem.queue_free()
 		else:
-			rigManager.UpdateRig(false)
+			# Return the reduced stack to its original grid position.
+			Return(combineItem)
+			combineItem.UpdateDetails()
 
-	Reset()
+		# When the weapon is actively held in a rig slot, trigger the rig update
+		# so the slide/hammer animations reflect the new chambered state.
+		if hoverSlot:
+			var slotName = hoverSlot.name
+			if ((slotName == "Primary" && gameData.primary)
+					|| (slotName == "Secondary" && gameData.secondary)):
+				rigManager.UpdateRig(true)
+			else:
+				rigManager.UpdateRig(false)
+
+		PlayAmmoLoad()
+
+		activeProgress.queue_free()
+		activeProgress = null
+		gameData.isOccupied = false
+		Reset()
 
 
 # --- Highlight --------------------------------------------------------------
