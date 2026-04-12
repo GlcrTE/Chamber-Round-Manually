@@ -1,7 +1,7 @@
 extends Node
 
 func _ready():
-	overrideScript("res://mods/scripts/Interface.gd")
+	overrideScript("res://mods/chamberroundmanually/Interface.gd")
 	queue_free()
 
 func overrideScript(overrideScriptPath: String):

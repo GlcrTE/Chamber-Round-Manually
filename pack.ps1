@@ -28,9 +28,9 @@ function Add-File($zip, $entryName, $filePath) {
 
 Add-File $zip "mod.txt"                         "$modRoot\mod.txt"
 Add-Dir  $zip "mods/"
-Add-Dir  $zip "mods/scripts/"
-Add-File $zip "mods/scripts/Main.gd"            "$modRoot\mods\scripts\Main.gd"
-Add-File $zip "mods/scripts/Interface.gd"       "$modRoot\mods\scripts\Interface.gd"
+Add-Dir  $zip "mods/chamberroundmanually/"
+Add-File $zip "mods/chamberroundmanually/Main.gd"       "$modRoot\mods\chamberroundmanually\Main.gd"
+Add-File $zip "mods/chamberroundmanually/Interface.gd"  "$modRoot\mods\chamberroundmanually\Interface.gd"
 
 $zip.Dispose()
 $stream.Dispose()
