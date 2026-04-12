@@ -1,5 +1,8 @@
 ## CHANGELOG
 
+### v1.2.0
+fixed folder naming
+
 ### v1.1.3
 Excluded manual loaded weapons like Mosin or Remington
 
