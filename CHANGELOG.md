@@ -1,5 +1,8 @@
 ## CHANGELOG
 
+### v1.1.2
+added a timer to chambering a round. it is the same timer when clearing the chamber
+
 ### v1.1.1
 Bugfix Animation of removing the magazine now plays properly when removing the mag from the gun and a round is still chambered
 
