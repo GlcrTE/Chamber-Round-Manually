@@ -1,5 +1,8 @@
 ## CHANGELOG
 
+### v1.1.3
+Excluded manual loaded weapons like Mosin or Remington
+
 ### v1.1.2
 added a timer to chambering a round. it is the same timer when clearing the chamber
 
@@ -12,3 +15,4 @@ Added the ability to clear the chamber when the weapon is equipped
 
 ### v1.0.0
 initial main release
+claud

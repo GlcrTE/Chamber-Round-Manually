@@ -14,6 +14,7 @@ func CombineCheck(targetItem, combineItem):
 		var weaponData: WeaponData = targetItem.slotData.itemData as WeaponData
 		if (weaponData != null
 				&& weaponData.ammo != null
+				&& weaponData.weaponAction != "Manual"
 				&& weaponData.ammo.file == combineItem.slotData.itemData.file
 				&& !targetItem.slotData.chamber
 				&& combineItem.slotData.amount > 0):
@@ -165,7 +166,8 @@ func Highlight():
 func ShowContext():
 	if hoverSlot && hoverSlot.get_child_count() != 0:
 		var slotItem = hoverSlot.get_child(0)
-		if slotItem.slotData.itemData.type == "Weapon":
+		var weaponData: WeaponData = slotItem.slotData.itemData as WeaponData
+		if weaponData != null && weaponData.weaponAction != "Manual":
 			contextGrid = inventoryGrid
 	super.ShowContext()
 
@@ -191,6 +193,20 @@ func ContextDrop():
 	if contextSlot:
 		contextGrid = null
 	super.ContextDrop()
+
+
+# --- ContextUnload ----------------------------------------------------------
+# Block the context-menu "Unload" action for manual-action weapons only when
+# they are equipped (contextSlot is set). In inventory the base behaviour is
+# unchanged.
+
+func ContextUnload():
+	if contextSlot && contextItem.slotData.itemData.type == "Weapon":
+		var weaponData: WeaponData = contextItem.slotData.itemData as WeaponData
+		if weaponData != null && weaponData.weaponAction == "Manual":
+			HideContext()
+			return
+	super.ContextUnload()
 
 
 # --- UnloadWeapon -----------------------------------------------------------
