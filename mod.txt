@@ -1,8 +1,11 @@
 [mod]
 name="Chamber Round Manually"
 id="chamberroundmanually"
-version="0.1.0"
+version="1.0.0"
 priority=0
 
 [autoload]
 ChamberRoundManually="res://mods/scripts/Main.gd"
+
+[updates]
+modworkshop=56051
