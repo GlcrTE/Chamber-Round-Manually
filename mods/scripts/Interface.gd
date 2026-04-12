@@ -138,6 +138,10 @@ func Highlight():
 # equipped weapons. Pre-setting contextGrid = inventoryGrid before calling
 # super fixes this: the super's hoverSlot branch never touches contextGrid,
 # so our value persists through context.Update() and the button shows up.
+#
+# Side-effect: any context action that branches on contextGrid first (e.g.
+# ContextRemove, ContextDrop) will now take the wrong path. Those functions
+# are overridden below to restore contextGrid = null when contextSlot is set.
 
 func ShowContext():
 	if hoverSlot && hoverSlot.get_child_count() != 0:
@@ -145,6 +149,29 @@ func ShowContext():
 		if slotItem.slotData.itemData.type == "Weapon":
 			contextGrid = inventoryGrid
 	super.ShowContext()
+
+
+# --- ContextRemove ----------------------------------------------------------
+# ShowContext() sets contextGrid = inventoryGrid for equipped weapons, but
+# ContextRemove() checks contextGrid first and skips the elif contextSlot
+# branch that plays the rig animation, ChangeMagazine, and UpdateBulletsDetach.
+# Null contextGrid when contextSlot is set so the base takes the correct path.
+
+func ContextRemove(nestedIndex):
+	if contextSlot:
+		contextGrid = null
+	super.ContextRemove(nestedIndex)
+
+
+# --- ContextDrop ------------------------------------------------------------
+# Same branch-order issue as ContextRemove: contextGrid branch calls
+# contextGrid.Pick(contextItem), but the weapon lives in the slot, not in
+# inventoryGrid. Null contextGrid so the base uses the contextSlot path.
+
+func ContextDrop():
+	if contextSlot:
+		contextGrid = null
+	super.ContextDrop()
 
 
 # --- UnloadWeapon -----------------------------------------------------------
