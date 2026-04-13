@@ -113,12 +113,14 @@ func ChamberRound(targetItem):
 
 		# When the weapon is actively held in a rig slot, trigger the rig update
 		# so the slide/hammer animations reflect the new chambered state.
+		# Use animate=false so UpdateRig does not trigger magazine-attach animations
+		# when a magazine is attached — the charge animation handles the visual.
 		var rigIsActive = false
 		if hoverSlot:
 			var slotName = hoverSlot.name
 			if ((slotName == "Primary" && gameData.primary)
 					|| (slotName == "Secondary" && gameData.secondary)):
-				rigManager.UpdateRig(true)
+				rigManager.UpdateRig(false)
 				rigIsActive = true
 			else:
 				rigManager.UpdateRig(false)
@@ -202,14 +204,97 @@ func ContextDrop():
 # Block the context-menu "Unload" action for manual-action weapons only when
 # they are equipped (contextSlot is set). In inventory the base behaviour is
 # unchanged.
+# When a magazine is attached and the chamber is loaded, route to
+# ClearChamberWithMag instead of the base UnloadWeapon (which would also
+# empty the magazine ammo). When the chamber is empty with a magazine attached
+# there is nothing to clear, so dismiss the menu.
 
 func ContextUnload():
-	if contextSlot && contextItem.slotData.itemData.type == "Weapon":
+	if contextItem.slotData.itemData.type == "Weapon":
 		var weaponData: WeaponData = contextItem.slotData.itemData as WeaponData
-		if weaponData != null && weaponData.weaponAction == "Manual":
-			HideContext()
-			return
+		if weaponData != null:
+			if contextSlot && weaponData.weaponAction == "Manual":
+				HideContext()
+				return
+			if weaponData.weaponAction != "Manual" && _hasMagazine(contextItem.slotData):
+				if contextItem.slotData.chamber:
+					var targetGrid = contextGrid if contextGrid != null else inventoryGrid
+					ClearChamberWithMag(contextItem, targetGrid)
+					HideContext()
+					PlayClick()
+					return
+				else:
+					HideContext()
+					return
 	super.ContextUnload()
+
+
+# --- ClearChamberWithMag ----------------------------------------------------
+# Ejects only the chambered round from a magazine-fed weapon without touching
+# the magazine ammo (slotData.amount stays intact). Shows the same progress
+# timer as the base unload, then uses UpdateRig(false) to refresh attachments
+# without triggering magazine-attach/detach animations, and SlideLock(true)
+# to visually reflect the now-empty chamber when the weapon is active.
+
+func ClearChamberWithMag(targetItem, targetGrid):
+	var equippedSlotName = ""
+	if contextSlot:
+		equippedSlotName = contextSlot.name
+
+	var clearedSlotData = targetItem.slotData
+
+	gameData.isOccupied = true
+
+	var ammoData = targetItem.slotData.itemData.ammo
+
+	var newProgress = progress.instantiate()
+	add_child(newProgress)
+	newProgress.global_position = targetItem.global_position
+	newProgress.size = targetItem.size
+	newProgress.Unload(1)
+	activeProgress = newProgress
+
+	await activeProgress.completed
+	if gameData.isDead: return
+
+	if activeProgress:
+		# Clear only the chamber; leave magazine ammo (slotData.amount) intact.
+		targetItem.slotData.chamber = false
+		targetItem.UpdateDetails()
+		targetItem.UpdateSprite()
+
+		var newSlotData = SlotData.new()
+		newSlotData.itemData = ammoData
+		newSlotData.amount = 1
+
+		if not AutoStack(newSlotData, targetGrid):
+			Create(newSlotData, targetGrid, true)
+			PlayStack()
+
+		activeProgress.queue_free()
+		activeProgress = null
+		gameData.isOccupied = false
+		Reset()
+
+	if equippedSlotName != "":
+		var isActive = ((equippedSlotName == "Primary" && gameData.primary)
+				|| (equippedSlotName == "Secondary" && gameData.secondary))
+		rigManager.UpdateRig(false)
+		if isActive:
+			if rigManager.get_child_count() > 0:
+				var rig = rigManager.get_child(rigManager.get_child_count() - 1)
+				if (rig is WeaponRig) && rig.slotData == clearedSlotData:
+					rig.SlideLock(true)
+
+
+# --- _hasMagazine -----------------------------------------------------------
+# Returns true when the weapon SlotData has a nested magazine attached.
+
+func _hasMagazine(slotData) -> bool:
+	for nestedItem in slotData.nested:
+		if nestedItem.subtype == "Magazine":
+			return true
+	return false
 
 
 # --- UnloadWeapon -----------------------------------------------------------
