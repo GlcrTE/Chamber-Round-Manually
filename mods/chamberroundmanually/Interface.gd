@@ -113,15 +113,18 @@ func ChamberRound(targetItem):
 
 		# When the weapon is actively held in a rig slot, trigger the rig update
 		# so the slide/hammer animations reflect the new chambered state.
+		var rigIsActive = false
 		if hoverSlot:
 			var slotName = hoverSlot.name
 			if ((slotName == "Primary" && gameData.primary)
 					|| (slotName == "Secondary" && gameData.secondary)):
 				rigManager.UpdateRig(true)
+				rigIsActive = true
 			else:
 				rigManager.UpdateRig(false)
 
 		PlayAmmoLoad()
+		_PlayChargeAnimation(targetItem.slotData, rigIsActive)
 
 		activeProgress.queue_free()
 		activeProgress = null
@@ -245,3 +248,41 @@ func PlayAmmoLoad():
 	var audio = audioInstance2D.instantiate()
 	add_child(audio)
 	audio.PlayInstance(audioLibrary.ammoLoad)
+
+
+# --- _PlayChargeAnimation ---------------------------------------------------
+# Half a second after chambering, play the weapon-specific charge sound and
+# the Charge animation on the active rig. Only runs when the weapon that was
+# chambered is currently drawn (primary or secondary rig visible).
+# After the animation finishes the rig returns to Idle automatically and the
+# slide lock is released — leaving the weapon in a chamber-loaded ready state.
+
+func _PlayChargeAnimation(weaponSlotData, rigWasActive: bool) -> void:
+	if not rigWasActive:
+		return
+
+	await get_tree().create_timer(0.5, false).timeout
+
+	# Bail out if the rig was holstered or swapped during the delay.
+	if rigManager.get_child_count() == 0:
+		return
+	var rig = rigManager.get_child(rigManager.get_child_count() - 1)
+	if not (rig is WeaponRig):
+		return
+	# Confirm the rig still holds the weapon we just chambered.
+	if rig.slotData != weaponSlotData:
+		return
+
+	# Play the weapon-specific bolt/slide charge sound.
+	rig.PlayCharge()
+
+	# The Charge AnimationTree condition exists in every rig scene but is never
+	# triggered by the base game's WeaponRig.gd — the animation is unused.
+	# Uncomment if a future game update wires it up:
+	#rig.animator["parameters/conditions/Charge"] = true
+	#await get_tree().process_frame
+	#rig.animator["parameters/conditions/Charge"] = false
+
+	# Release the slide lock now that the chamber is loaded, matching the
+	# state the rig would have had if the weapon were drawn already chambered.
+	rig.SlideLock(false)
