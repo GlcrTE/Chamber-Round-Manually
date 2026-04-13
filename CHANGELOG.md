@@ -4,7 +4,7 @@
 bugfix when chambering ammo and in the same time tabbing out of the inventory the game softlocks with the loadammo function
 
 ### v2.0.1
-bugfix set the waiting timer for active weapons now in sync with sound and animation
+bugfix set the waiting timer for active weapons now in sync with sound
 bugfix weaponstate empty matches with the charge animations of several pistols.
 
 ### v2.0.0
