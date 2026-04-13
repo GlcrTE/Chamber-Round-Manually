@@ -215,8 +215,8 @@ func ContextUnload():
 # --- UnloadWeapon -----------------------------------------------------------
 # After the base async unload finishes, refresh the weapon rig when the weapon
 # was actively held in the Primary or Secondary slot.
-# When the action is a "Clear Chamber" (chamber=true, amount=0), also slide-lock
-# the rig and play the charge sound to reflect the now-empty weapon state.
+# When the action is a "Clear Chamber" (chamber=true, amount=0), also
+# slide-lock the rig immediately to reflect the now-empty weapon state.
 
 func UnloadWeapon(targetItem, targetGrid):
 	# Capture the slot name before the base Reset() clears contextSlot.
@@ -239,40 +239,10 @@ func UnloadWeapon(targetItem, targetGrid):
 			rigManager.UpdateRig(false)
 
 		if isClearChamber && isActive:
-			_PlayClearChamberEffect(clearedSlotData)
-
-
-# --- _PlayClearChamberEffect ------------------------------------------------
-# Called after the chamber is cleared on an actively held weapon. Plays the
-# Charge animation and bolt-cycle sound simultaneously (no delay), then
-# slide-locks the rig when the animation ends to reflect the empty chamber.
-
-func _PlayClearChamberEffect(weaponSlotData) -> void:
-	if rigManager.get_child_count() == 0:
-		return
-	var rig = rigManager.get_child(rigManager.get_child_count() - 1)
-	if not (rig is WeaponRig):
-		return
-	if rig.slotData != weaponSlotData:
-		return
-
-	var lib: AnimationLibrary = rig.animations.get_animation_library("")
-	var anim_name: String = ""
-	for name in lib.get_animation_list():
-		if name.ends_with("_Charge"):
-			anim_name = name
-			break
-	var anim_length: float = 1.8
-	if anim_name != "":
-		anim_length = lib.get_animation(anim_name).length
-
-	rig.PlayCharge()
-	rig.animator["parameters/conditions/Charge"] = true
-	await get_tree().create_timer(0.1, false).timeout
-	rig.animator["parameters/conditions/Charge"] = false
-
-	await get_tree().create_timer(anim_length - 0.1, false).timeout
-	rig.SlideLock(true)
+			if rigManager.get_child_count() > 0:
+				var rig = rigManager.get_child(rigManager.get_child_count() - 1)
+				if (rig is WeaponRig) && rig.slotData == clearedSlotData:
+					rig.SlideLock(true)
 
 
 # --- Reset ------------------------------------------------------------------
@@ -296,8 +266,7 @@ func PlayAmmoLoad():
 # --- _PlayChargeAnimation ---------------------------------------------------
 # Half a second after chambering, trigger the Charge animation that is already
 # compiled into every weapon's AnimationLibrary (baked from the GLB alongside
-# all other animations). No external file loading is needed or possible —
-# exported Godot games only support pre-compiled .res resources, not raw .tres.
+# all other animations).
 #
 # The existing Colt_1911_Charge animation is 1.8 s with all 98 tracks (body,
 # arms, fingers, IK targets). Its duration matches the charge sound exactly,
