@@ -6,9 +6,10 @@ bugfix set the waiting timer for active weapons now in sync with sound
 
 ### v2.0.1
 bugfix correct weaponstate after clearing the chamber
+bugfix mod handling active weapons with attached magazins now correctly
 
 ### v2.0.0
-added the already existing animations to clearing and chambering active weapons.
+added the already existing animations to clearing the chamber and chambering rounds on active weapons.
 
 ### v1.3.0
 added a charge sound after loading the round into the chamber or clearing the chamber

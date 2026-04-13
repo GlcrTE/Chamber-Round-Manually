@@ -54,7 +54,18 @@ func Hover():
 
 # --- Release ----------------------------------------------------------------
 # If a chamber action is pending, perform it and return early so the base
-# Release() never runs. For any other drag, delegate entirely to the base.
+# Release() never runs.
+#
+# Magazine-attach correction: the base Item.Combine() auto-chambers a round
+# when attaching a loaded magazine to an empty-chamber weapon (sets
+# chamber=true, amount=mag-1). This happens before UpdateRig fires, so
+# Magazine(true,true) sees chamber=true and plays MagazineAttachTactical.
+# We intercept the attach ourselves, undo the auto-chamber right after
+# Combine(), then call UpdateRig(true). Magazine(true,true) now sees
+# !chamber && amount!=0 → PlayMagazineAttachEmpty. The Empty animation then
+# re-chambers (chamber=true, amount-=1), leaving the final state identical.
+#
+# For any other drag, delegate entirely to the base.
 
 func Release():
 	if canChamberRound:
@@ -67,7 +78,44 @@ func Release():
 			Reset()
 		return
 
+	if (itemDragged != null && hoverSlot != null
+			&& hoverSlot.get_child_count() > 0
+			&& itemDragged.slotData.itemData.subtype == "Magazine"
+			&& itemDragged.slotData.amount > 0):
+		var weaponItem = hoverSlot.get_child(0)
+		var weaponData: WeaponData = weaponItem.slotData.itemData as WeaponData
+		if (weaponData != null
+				&& !weaponItem.slotData.chamber
+				&& !_hasMagazine(weaponItem.slotData)
+				&& ((hoverSlot.name == "Primary" && gameData.primary)
+						|| (hoverSlot.name == "Secondary" && gameData.secondary))):
+			_AttachMagazineEmpty(weaponItem)
+			return
+
 	super.Release()
+
+
+# --- _AttachMagazineEmpty ---------------------------------------------------
+# Attach a loaded magazine to an active weapon whose chamber is empty, playing
+# the correct MagazineAttachEmpty animation instead of MagazineAttachTactical.
+# Mirrors the base Release() combine path exactly, except that it undoes
+# Combine()'s auto-chamber before UpdateRig(true) is called.
+
+func _AttachMagazineEmpty(weaponItem) -> void:
+	var magazineAmmo: int = itemDragged.slotData.amount
+	var combineItem = itemDragged
+
+	weaponItem.Combine(combineItem)
+	# Combine() set chamber=true and amount=mag-1 (auto-chamber). Undo that so
+	# Magazine(true,true) takes the !chamber && amount!=0 → Empty branch.
+	weaponItem.slotData.chamber = false
+	weaponItem.slotData.amount = magazineAmmo
+	combineItem.queue_free()
+
+	rigManager.UpdateRig(true)
+	ChangeMagazine(hoverSlot)
+	PlayAttach()
+	Reset()
 
 
 # --- ChamberRound -----------------------------------------------------------
