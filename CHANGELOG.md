@@ -1,5 +1,9 @@
 ## CHANGELOG
 
+###v1.3.0
+added a charge sound when loading a round and clearing the chamber
+added weaponstate check so if the chamber is cleared of an active weapon the weapon state is set accordingly to weapon empty.
+
 ### v1.2.0
 fixed folder naming
 

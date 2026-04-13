@@ -215,6 +215,8 @@ func ContextUnload():
 # --- UnloadWeapon -----------------------------------------------------------
 # After the base async unload finishes, refresh the weapon rig when the weapon
 # was actively held in the Primary or Secondary slot.
+# When the action is a "Clear Chamber" (chamber=true, amount=0), also slide-lock
+# the rig and play the charge sound to reflect the now-empty weapon state.
 
 func UnloadWeapon(targetItem, targetGrid):
 	# Capture the slot name before the base Reset() clears contextSlot.
@@ -222,14 +224,39 @@ func UnloadWeapon(targetItem, targetGrid):
 	if contextSlot:
 		equippedSlotName = contextSlot.name
 
+	# Detect "Clear Chamber" before super zeroes slotData.chamber.
+	var isClearChamber = targetItem.slotData.chamber && targetItem.slotData.amount == 0
+	var clearedSlotData = targetItem.slotData
+
 	await super.UnloadWeapon(targetItem, targetGrid)
 
 	if equippedSlotName != "":
-		if ((equippedSlotName == "Primary" && gameData.primary)
-				|| (equippedSlotName == "Secondary" && gameData.secondary)):
+		var isActive = ((equippedSlotName == "Primary" && gameData.primary)
+				|| (equippedSlotName == "Secondary" && gameData.secondary))
+		if isActive:
 			rigManager.UpdateRig(true)
 		else:
 			rigManager.UpdateRig(false)
+
+		if isClearChamber && isActive:
+			_PlayClearChamberEffect(clearedSlotData)
+
+
+# --- _PlayClearChamberEffect ------------------------------------------------
+# Called after the chamber is cleared on an actively held weapon. Slide-locks
+# the rig (marking it visually empty) and plays the bolt-cycle charge sound.
+
+func _PlayClearChamberEffect(weaponSlotData) -> void:
+	if rigManager.get_child_count() == 0:
+		return
+	var rig = rigManager.get_child(rigManager.get_child_count() - 1)
+	if not (rig is WeaponRig):
+		return
+	if rig.slotData != weaponSlotData:
+		return
+
+	rig.SlideLock(true)
+	rig.PlayCharge()
 
 
 # --- Reset ------------------------------------------------------------------
