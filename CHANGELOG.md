@@ -1,8 +1,7 @@
 ## CHANGELOG
 
 ### v2.0.2
-bugfix when chambering ammo and in the same time tabbing out of the inventory the game softlocks with the loadammo function
-bugfix set the waiting timer for active weapons now in sync with sound
+fixed an ammo duplication bug when inserting a loaded magazin to a weapon that has an empty chamber
 
 ### v2.0.1
 bugfix correct weaponstate after clearing the chamber
