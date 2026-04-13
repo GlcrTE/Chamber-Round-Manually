@@ -22,4 +22,3 @@ Added the ability to clear the chamber when the weapon is equipped
 
 ### v1.0.0
 initial main release
-claud
