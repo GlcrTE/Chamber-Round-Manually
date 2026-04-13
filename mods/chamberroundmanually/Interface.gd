@@ -60,10 +60,11 @@ func Hover():
 # when attaching a loaded magazine to an empty-chamber weapon (sets
 # chamber=true, amount=mag-1). This happens before UpdateRig fires, so
 # Magazine(true,true) sees chamber=true and plays MagazineAttachTactical.
-# We intercept the attach ourselves, undo the auto-chamber right after
-# Combine(), then call UpdateRig(true). Magazine(true,true) now sees
-# !chamber && amount!=0 → PlayMagazineAttachEmpty. The Empty animation then
-# re-chambers (chamber=true, amount-=1), leaving the final state identical.
+# We intercept the attach ourselves, undo chamber=true right after Combine(),
+# then call UpdateRig(true) which plays MagazineAttachEmpty. The data update
+# (chamber=true, amount-=1 or just chamber=true) is handled inside
+# WeaponRig.Magazine() — which branch fires depends on whether the weapon
+# uses a slide-lock. See _AttachMagazineEmpty for details.
 #
 # For any other drag, delegate entirely to the base.
 
@@ -104,12 +105,20 @@ func Release():
 func _AttachMagazineEmpty(weaponItem) -> void:
 	var magazineAmmo: int = itemDragged.slotData.amount
 	var combineItem = itemDragged
+	var weaponData: WeaponData = weaponItem.slotData.itemData as WeaponData
 
 	weaponItem.Combine(combineItem)
-	# Combine() set chamber=true and amount=mag-1 (auto-chamber). Undo that so
-	# Magazine(true,true) takes the !chamber && amount!=0 → Empty branch.
+	# Combine() set chamber=true and amount=mag-1 (auto-chamber). Undo chamber so
+	# Magazine(true,true) takes the MagazineAttachEmpty path instead of Tactical.
+	#
+	# WeaponRig.Magazine() has two MagazineAttachEmpty branches:
+	#  • Slide-lock branch (slideLock && slideLocked): sets chamber=true, does NOT
+	#    decrement amount → keep Combine()'s already-decremented amount (mag-1).
+	#  • Regular branch (!chamber && amount!=0): sets chamber=true AND decrements
+	#    amount -= 1 → restore full amount so the final count is still mag-1.
 	weaponItem.slotData.chamber = false
-	weaponItem.slotData.amount = magazineAmmo
+	if weaponData == null || !weaponData.slideLock:
+		weaponItem.slotData.amount = magazineAmmo
 	combineItem.queue_free()
 
 	rigManager.UpdateRig(true)
