@@ -1,5 +1,15 @@
 ## CHANGELOG
 
+### v2.0.2
+bugfix when chambering ammo and in the same time tabbing out of the inventory the game softlocks with the loadammo function
+
+### v2.0.1
+bugfix set the waiting timer for active weapons now in sync with sound and animation
+bugfix weaponstate empty matches with the charge animations of several pistols.
+
+### v2.0.0
+added the already existing animations to clearing and chambering active weapons.
+
 ### v1.3.0
 added a charge sound after loading the round into the chamber or clearing the chamber
 added weaponstate check so if the chamber is cleared of an active weapon the weapon state is set accordingly to weapon empty.
