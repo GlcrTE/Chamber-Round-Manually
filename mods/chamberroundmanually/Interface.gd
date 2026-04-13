@@ -243,8 +243,9 @@ func UnloadWeapon(targetItem, targetGrid):
 
 
 # --- _PlayClearChamberEffect ------------------------------------------------
-# Called after the chamber is cleared on an actively held weapon. Slide-locks
-# the rig (marking it visually empty) and plays the bolt-cycle charge sound.
+# Called after the chamber is cleared on an actively held weapon. Plays the
+# Charge animation and bolt-cycle sound simultaneously (no delay), then
+# slide-locks the rig when the animation ends to reflect the empty chamber.
 
 func _PlayClearChamberEffect(weaponSlotData) -> void:
 	if rigManager.get_child_count() == 0:
@@ -255,8 +256,23 @@ func _PlayClearChamberEffect(weaponSlotData) -> void:
 	if rig.slotData != weaponSlotData:
 		return
 
-	rig.SlideLock(true)
+	var lib: AnimationLibrary = rig.animations.get_animation_library("")
+	var anim_name: String = ""
+	for name in lib.get_animation_list():
+		if name.ends_with("_Charge"):
+			anim_name = name
+			break
+	var anim_length: float = 1.8
+	if anim_name != "":
+		anim_length = lib.get_animation(anim_name).length
+
 	rig.PlayCharge()
+	rig.animator["parameters/conditions/Charge"] = true
+	await get_tree().create_timer(0.1, false).timeout
+	rig.animator["parameters/conditions/Charge"] = false
+
+	await get_tree().create_timer(anim_length - 0.1, false).timeout
+	rig.SlideLock(true)
 
 
 # --- Reset ------------------------------------------------------------------
@@ -278,11 +294,16 @@ func PlayAmmoLoad():
 
 
 # --- _PlayChargeAnimation ---------------------------------------------------
-# Half a second after chambering, play the weapon-specific charge sound and
-# the Charge animation on the active rig. Only runs when the weapon that was
-# chambered is currently drawn (primary or secondary rig visible).
-# After the animation finishes the rig returns to Idle automatically and the
-# slide lock is released — leaving the weapon in a chamber-loaded ready state.
+# Half a second after chambering, trigger the Charge animation that is already
+# compiled into every weapon's AnimationLibrary (baked from the GLB alongside
+# all other animations). No external file loading is needed or possible —
+# exported Godot games only support pre-compiled .res resources, not raw .tres.
+#
+# The existing Colt_1911_Charge animation is 1.8 s with all 98 tracks (body,
+# arms, fingers, IK targets). Its duration matches the charge sound exactly,
+# so both are started simultaneously. The Charge→Idle transition is
+# switch_mode = AtEnd, so the state machine returns to Idle automatically
+# when the animation ends.
 
 func _PlayChargeAnimation(weaponSlotData, rigWasActive: bool) -> void:
 	if not rigWasActive:
@@ -300,16 +321,29 @@ func _PlayChargeAnimation(weaponSlotData, rigWasActive: bool) -> void:
 	if rig.slotData != weaponSlotData:
 		return
 
-	# Play the weapon-specific bolt/slide charge sound.
+	# Find the Charge animation by scanning the library for any name ending in
+	# "_Charge". This handles weapons where data.file uses underscores but the
+	# animation name uses hyphens (e.g. AK_12 vs AK-12_Charge).
+	var lib: AnimationLibrary = rig.animations.get_animation_library("")
+	var anim_name: String = ""
+	for name in lib.get_animation_list():
+		if name.ends_with("_Charge"):
+			anim_name = name
+			break
+	var anim_length: float = 1.8  # safe fallback (Colt_1911 charge duration)
+	if anim_name != "":
+		anim_length = lib.get_animation(anim_name).length
+
+	# Start the charge sound and the animation simultaneously.
+	# Mirror the base game pattern: hold the condition true for 0.1 s so the
+	# AnimationTree is guaranteed to tick and start the transition before we
+	# clear it (same timer used by every animation trigger in WeaponRig.gd).
 	rig.PlayCharge()
+	rig.animator["parameters/conditions/Charge"] = true
+	await get_tree().create_timer(0.1, false).timeout
+	rig.animator["parameters/conditions/Charge"] = false
 
-	# The Charge AnimationTree condition exists in every rig scene but is never
-	# triggered by the base game's WeaponRig.gd — the animation is unused.
-	# Uncomment if a future game update wires it up:
-	#rig.animator["parameters/conditions/Charge"] = true
-	#await get_tree().process_frame
-	#rig.animator["parameters/conditions/Charge"] = false
-
-	# Release the slide lock now that the chamber is loaded, matching the
-	# state the rig would have had if the weapon were drawn already chambered.
+	# Release the slide lock when the animation finishes.
+	# 0.1 s of the total duration has already elapsed above.
+	await get_tree().create_timer(anim_length - 0.1, false).timeout
 	rig.SlideLock(false)
