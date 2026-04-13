@@ -1,5 +1,5 @@
 [mod]
-name="Chamber Round Manually"3
+name="Chamber Round Manually"
 id="chamberroundmanually"
 version="1.3.0"
 priority=0
