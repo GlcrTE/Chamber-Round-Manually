@@ -36,20 +36,12 @@ func Hover():
 	if itemDragged && hoverItem:
 		if CombineCheck(hoverItem, itemDragged) == 6:
 			canChamberRound = true
-			canCombine = false
-			canCombineSwap = false
-			canCombineLoad = false
-			canCombineStack = false
-			canCombineCharge = false
+			_ClearCombineFlags()
 
 	elif itemDragged && hoverSlot && hoverSlot.get_child_count() != 0:
 		if CombineCheck(hoverSlot.get_child(0), itemDragged) == 6:
 			canChamberRound = true
-			canCombine = false
-			canCombineSwap = false
-			canCombineLoad = false
-			canCombineStack = false
-			canCombineCharge = false
+			_ClearCombineFlags()
 
 
 # --- Release ----------------------------------------------------------------
@@ -139,13 +131,7 @@ func ChamberRound(targetItem):
 
 	# Show the red-tinted progress circle over the weapon item (matches the
 	# same visual used when clearing the chamber via UnloadWeapon).
-	var newProgress = progress.instantiate()
-	add_child(newProgress)
-	newProgress.global_position = targetItem.global_position
-	newProgress.size = targetItem.size
-	newProgress.Unload(1)
-	activeProgress = newProgress
-
+	_StartProgress(targetItem)
 	await activeProgress.completed
 	if gameData.isDead: return
 
@@ -175,12 +161,9 @@ func ChamberRound(targetItem):
 		var rigIsActive = false
 		if hoverSlot:
 			var slotName = hoverSlot.name
-			if ((slotName == "Primary" && gameData.primary)
-					|| (slotName == "Secondary" && gameData.secondary)):
-				rigManager.UpdateRig(false)
-				rigIsActive = true
-			else:
-				rigManager.UpdateRig(false)
+			rigManager.UpdateRig(false)
+			rigIsActive = ((slotName == "Primary" && gameData.primary)
+					|| (slotName == "Secondary" && gameData.secondary))
 
 		PlayAmmoLoad()
 		_PlayChargeAnimation(targetItem.slotData, rigIsActive)
@@ -304,13 +287,7 @@ func ClearChamberWithMag(targetItem, targetGrid):
 
 	var ammoData = targetItem.slotData.itemData.ammo
 
-	var newProgress = progress.instantiate()
-	add_child(newProgress)
-	newProgress.global_position = targetItem.global_position
-	newProgress.size = targetItem.size
-	newProgress.Unload(1)
-	activeProgress = newProgress
-
+	_StartProgress(targetItem)
 	await activeProgress.completed
 	if gameData.isDead: return
 
@@ -334,14 +311,7 @@ func ClearChamberWithMag(targetItem, targetGrid):
 		Reset()
 
 	if equippedSlotName != "":
-		var isActive = ((equippedSlotName == "Primary" && gameData.primary)
-				|| (equippedSlotName == "Secondary" && gameData.secondary))
-		rigManager.UpdateRig(false)
-		if isActive:
-			if rigManager.get_child_count() > 0:
-				var rig = rigManager.get_child(rigManager.get_child_count() - 1)
-				if (rig is WeaponRig) && rig.slotData == clearedSlotData:
-					rig.SlideLock(true)
+		_RefreshRig(equippedSlotName, clearedSlotData, false, true)
 
 
 # --- _hasMagazine -----------------------------------------------------------
@@ -373,18 +343,7 @@ func UnloadWeapon(targetItem, targetGrid):
 	await super.UnloadWeapon(targetItem, targetGrid)
 
 	if equippedSlotName != "":
-		var isActive = ((equippedSlotName == "Primary" && gameData.primary)
-				|| (equippedSlotName == "Secondary" && gameData.secondary))
-		if isActive:
-			rigManager.UpdateRig(true)
-		else:
-			rigManager.UpdateRig(false)
-
-		if isClearChamber && isActive:
-			if rigManager.get_child_count() > 0:
-				var rig = rigManager.get_child(rigManager.get_child_count() - 1)
-				if (rig is WeaponRig) && rig.slotData == clearedSlotData:
-					rig.SlideLock(true)
+		_RefreshRig(equippedSlotName, clearedSlotData, true, isClearChamber)
 
 
 # --- Reset ------------------------------------------------------------------
@@ -403,6 +362,47 @@ func PlayAmmoLoad():
 	var audio = audioInstance2D.instantiate()
 	add_child(audio)
 	audio.PlayInstance(audioLibrary.ammoLoad)
+
+
+# --- _StartProgress ---------------------------------------------------------
+# Instantiate and show the progress circle over targetItem, then assign it to
+# activeProgress so callers can await activeProgress.completed.
+
+func _StartProgress(targetItem) -> void:
+	var newProgress = progress.instantiate()
+	add_child(newProgress)
+	newProgress.global_position = targetItem.global_position
+	newProgress.size = targetItem.size
+	newProgress.Unload(1)
+	activeProgress = newProgress
+
+
+# --- _ClearCombineFlags -----------------------------------------------------
+# Zero all combine-type flags so base Release() cannot trigger a standard
+# combine while a chamber-round action is pending.
+
+func _ClearCombineFlags() -> void:
+	canCombine = false
+	canCombineSwap = false
+	canCombineLoad = false
+	canCombineStack = false
+	canCombineCharge = false
+
+
+# --- _RefreshRig ------------------------------------------------------------
+# Update the rig after a chamber-state change. animate_when_active controls
+# whether UpdateRig is called with true (plays animations) when the slot is
+# active; inactive slots always receive false. When slide_lock is true, also
+# calls SlideLock(true) on the active rig if it still holds slotData.
+
+func _RefreshRig(slotName: String, slotData, animate_when_active: bool, slide_lock: bool) -> void:
+	var isActive = ((slotName == "Primary" && gameData.primary)
+			|| (slotName == "Secondary" && gameData.secondary))
+	rigManager.UpdateRig(animate_when_active && isActive)
+	if slide_lock && isActive && rigManager.get_child_count() > 0:
+		var rig = rigManager.get_child(rigManager.get_child_count() - 1)
+		if (rig is WeaponRig) && rig.slotData == slotData:
+			rig.SlideLock(true)
 
 
 # --- _PlayChargeAnimation ---------------------------------------------------

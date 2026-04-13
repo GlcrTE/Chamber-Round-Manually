@@ -1,5 +1,8 @@
 ## CHANGELOG
 
+### 2.0.3
+improved overall code structure
+
 ### v2.0.2
 fixed an ammo duplication bug when inserting a loaded magazin to a weapon that has an empty chamber
 
