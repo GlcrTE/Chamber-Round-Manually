@@ -163,9 +163,28 @@ func ChamberRound(targetItem):
 	# Reset() → itemDragged = null, so Close() can no longer Drop() this item.
 	combineItem.hide()
 
-	# Show the red-tinted progress circle over the weapon item (matches the
-	# same visual used when clearing the chamber via UnloadWeapon).
-	_StartProgress(targetItem)
+	# Detect active slot now — hoverSlot is not nulled by Reset(), so it stays
+	# valid across the await, but we read it here for the pre-await branch too.
+	var rigIsActive = false
+	if hoverSlot:
+		var slotName = hoverSlot.name
+		rigIsActive = ((slotName == "Primary" && gameData.primary)
+				|| (slotName == "Secondary" && gameData.secondary))
+
+	if rigIsActive:
+		# Active equipped weapon: use Use() so the circle runs for exactly the
+		# charge animation duration without repeating the ammo-load audio.
+		var chargeLen := _GetChargeAnimationLength()
+		if chargeLen <= 0.0:
+			chargeLen = 1.8
+		_StartProgress(targetItem, chargeLen, true)
+		# Fire the charge animation concurrently. It waits 0.2 s, plays the
+		# ammo-load sound once, starts the animation, then slide-locks on finish.
+		_PlayChargeAnimation(targetItem.slotData, true, true)
+	else:
+		# Inventory weapon: short default circle (Unload(1) → ~0.2 s).
+		_StartProgress(targetItem)
+
 	await activeProgress.completed
 	if gameData.isDead: return
 
@@ -191,19 +210,15 @@ func ChamberRound(targetItem):
 			combineItem.global_position = savedReturnPosition
 			savedReturnGrid.Place(combineItem)
 
-		# When the weapon is actively held in a rig slot, trigger the rig update
-		# so the slide/hammer animations reflect the new chambered state.
-		# Use animate=false so UpdateRig does not trigger magazine-attach animations
-		# when a magazine is attached — the charge animation handles the visual.
-		var rigIsActive = false
-		if hoverSlot:
-			var slotName = hoverSlot.name
-			rigManager.UpdateRig(false)
-			rigIsActive = ((slotName == "Primary" && gameData.primary)
-					|| (slotName == "Secondary" && gameData.secondary))
+		# Refresh the rig to reflect the new chamber state. animate=false so
+		# UpdateRig does not trigger magazine-attach animations.
+		rigManager.UpdateRig(false)
 
-		PlayAmmoLoad()
-		_PlayChargeAnimation(targetItem.slotData, rigIsActive)
+		if not rigIsActive:
+			# Inventory weapon: play load sound and trigger animation post-circle.
+			PlayAmmoLoad()
+			_PlayChargeAnimation(targetItem.slotData, false)
+		# Active weapon: sound + animation were already fired concurrently above.
 
 		activeProgress.queue_free()
 		activeProgress = null
@@ -405,12 +420,17 @@ func PlayAmmoLoad():
 # Instantiate and show the progress circle over targetItem, then assign it to
 # activeProgress so callers can await activeProgress.completed.
 
-func _StartProgress(targetItem) -> void:
+func _StartProgress(targetItem, unload_time: float = 1.0, use_exact: bool = false) -> void:
 	var newProgress = progress.instantiate()
 	add_child(newProgress)
 	newProgress.global_position = targetItem.global_position
 	newProgress.size = targetItem.size
-	newProgress.Unload(1)
+	if use_exact:
+		# Use() runs for exactly `unload_time` seconds and sets audioCycle=1000
+		# so the internal ammo-load audio never fires — we play it ourselves once.
+		newProgress.Use(unload_time)
+	else:
+		newProgress.Unload(unload_time)
 	activeProgress = newProgress
 
 
@@ -442,22 +462,38 @@ func _RefreshRig(slotName: String, slotData, animate_when_active: bool, slide_lo
 			rig.SlideLock(true)
 
 
-# --- _PlayChargeAnimation ---------------------------------------------------
-# Half a second after chambering, trigger the Charge animation that is already
-# compiled into every weapon's AnimationLibrary (baked from the GLB alongside
-# all other animations).
-#
-# The existing Colt_1911_Charge animation is 1.8 s with all 98 tracks (body,
-# arms, fingers, IK targets). Its duration matches the charge sound exactly,
-# so both are started simultaneously. The Charge→Idle transition is
-# switch_mode = AtEnd, so the state machine returns to Idle automatically
-# when the animation ends.
+# --- _GetChargeAnimationLength ----------------------------------------------
+# Returns the length of the current rig's Charge animation, or 1.8 s as a
+# safe fallback (Colt_1911 charge duration). Returns 0.0 when no valid rig
+# or charge animation is found so callers can treat it as "not applicable".
 
-func _PlayChargeAnimation(weaponSlotData, rigWasActive: bool) -> void:
+func _GetChargeAnimationLength() -> float:
+	if rigManager.get_child_count() == 0:
+		return 0.0
+	var rig = rigManager.get_child(rigManager.get_child_count() - 1)
+	if not (rig is WeaponRig):
+		return 0.0
+	var lib: AnimationLibrary = rig.animations.get_animation_library("")
+	for name in lib.get_animation_list():
+		if name.ends_with("_Charge"):
+			return lib.get_animation(name).length
+	return 1.8  # fallback: Colt 1911 charge duration
+
+
+# --- _PlayChargeAnimation ---------------------------------------------------
+# 0.2 s after chambering, trigger the Charge animation compiled into every
+# weapon's AnimationLibrary. When play_sound is true the ammo-load sound is
+# played once at the same moment the animation starts (used when the circle
+# suppresses its own audio via Use() instead of Unload()).
+#
+# The Charge→Idle transition is switch_mode = AtEnd, so the state machine
+# returns to Idle automatically when the animation ends.
+
+func _PlayChargeAnimation(weaponSlotData, rigWasActive: bool, play_sound: bool = false) -> void:
 	if not rigWasActive:
 		return
 
-	await get_tree().create_timer(0.5, false).timeout
+	await get_tree().create_timer(0.2, false).timeout
 
 	# Bail out if the rig was holstered or swapped during the delay.
 	if rigManager.get_child_count() == 0:
@@ -468,6 +504,9 @@ func _PlayChargeAnimation(weaponSlotData, rigWasActive: bool) -> void:
 	# Confirm the rig still holds the weapon we just chambered.
 	if rig.slotData != weaponSlotData:
 		return
+
+	if play_sound:
+		PlayAmmoLoad()
 
 	# Find the Charge animation by scanning the library for any name ending in
 	# "_Charge". This handles weapons where data.file uses underscores but the
