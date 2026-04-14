@@ -4,6 +4,7 @@
 MCM Integration added
 Added the ability to automatically load a round to the chamber with Shift + R. The same Shift+R removes the bullet again (If you do this with a loaded magazine the gun won't shoot keep in mind)
 fixed bug that it was not longer possible to clear chamber manually when a mag is attached to the weapon.
+Set the timer for the duration of the item lock of an active weapon to the animation_length.
 
 ### 2.0.3
 improved overall code structure
