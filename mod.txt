@@ -1,11 +1,12 @@
 [mod]
 name="Chamber Round Manually"
 id="chamberroundmanually"
-version="2.0.3"
+version="2.1.0"
 priority=0
 
 [autoload]
 ChamberRoundManually="res://mods/chamberroundmanually/Main.gd"
+ChamberRoundManuallyConfig="res://mods/chamberroundmanually/Config.gd"
 
 [updates]
 modworkshop=56051

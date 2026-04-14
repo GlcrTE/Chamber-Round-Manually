@@ -1,7 +1,13 @@
 extends "res://Scripts/Interface.gd"
 
+var modSettings = preload("res://mods/chamberroundmanually/ModSettings.tres")
+
 # Tracks whether the current drag-over target accepts a "chamber round" action.
 var canChamberRound = false
+
+# Debounce flag: true while the shortcut key is held down so we only fire once
+# per press and not every physics frame.
+var _shortcutKeyWasDown = false
 
 
 # --- CombineCheck -----------------------------------------------------------
@@ -489,3 +495,181 @@ func _PlayChargeAnimation(weaponSlotData, rigWasActive: bool) -> void:
 	# 0.1 s of the total duration has already elapsed above.
 	await get_tree().create_timer(anim_length - 0.1, false).timeout
 	rig.SlideLock(false)
+
+
+# --- _physics_process -------------------------------------------------------
+# Run keyboard shortcut polling before the base implementation so it fires
+# even when the interface node is hidden (inventory closed). The base already
+# uses this same polling pattern for all its own input checks.
+
+func _physics_process(delta):
+	_PollKeyboardShortcut()
+	super._physics_process(delta)
+
+
+# --- _PollKeyboardShortcut --------------------------------------------------
+# Poll the configured key combination every physics frame. The debounce flag
+# _shortcutKeyWasDown ensures the action fires exactly once per key press
+# rather than every frame for the duration the key is held.
+
+func _PollKeyboardShortcut() -> void:
+	if gameData.interface or gameData.isOccupied or gameData.isDead:
+		_shortcutKeyWasDown = false
+		return
+
+	var modifier_ok = false
+	match modSettings.modifier_key:
+		0: modifier_ok = true
+		1: modifier_ok = Input.is_key_pressed(KEY_SHIFT)
+		2: modifier_ok = Input.is_key_pressed(KEY_ALT)
+		3: modifier_ok = Input.is_key_pressed(KEY_CTRL)
+
+	var isDown = Input.is_key_pressed(modSettings.action_key as Key)
+
+	if isDown and modifier_ok and not _shortcutKeyWasDown:
+		_shortcutKeyWasDown = true
+		_TryKeyboardChamberToggle()
+	elif not isDown:
+		_shortcutKeyWasDown = false
+
+
+# --- _TryKeyboardChamberToggle ----------------------------------------------
+# Resolve the active equipped weapon and its chamber state, then dispatch to
+# the appropriate keyboard action function.
+
+func _TryKeyboardChamberToggle() -> void:
+	# gameData.primary/secondary are booleans, not SlotData.
+	# Get the SlotData from the Item node that lives inside the equipment slot.
+	var weaponSlotName = ""
+	if gameData.primary:
+		weaponSlotName = "Primary"
+	elif gameData.secondary:
+		weaponSlotName = "Secondary"
+	else:
+		return
+
+	var weaponSlot = null
+	for slot in equipment.get_children():
+		if slot.name == weaponSlotName:
+			weaponSlot = slot
+			break
+	if weaponSlot == null or weaponSlot.get_child_count() == 0:
+		return
+	var weaponItem = weaponSlot.get_child(0)
+
+	var weaponData: WeaponData = weaponItem.slotData.itemData as WeaponData
+	if weaponData == null or weaponData.weaponAction == "Manual":
+		return
+
+	if not weaponItem.slotData.chamber:
+		_KeyboardChamberRound(weaponItem, weaponSlot)
+	else:
+		_KeyboardUnloadChamber(weaponItem, weaponSlot)
+
+
+# --- _KeyboardChamberRound --------------------------------------------------
+# Chamber one round from the player's inventory into the active weapon without
+# opening the inventory UI. Finds the first compatible ammo stack, waits the
+# standard load delay (0.2 s), then marks the weapon chambered and consumes
+# one round. Plays the charge animation and ammo-load sound as normal.
+
+func _KeyboardChamberRound(weaponItem, weaponSlot) -> void:
+	var weaponData: WeaponData = weaponItem.slotData.itemData as WeaponData
+	if weaponData == null or weaponData.ammo == null:
+		return
+
+	var ammoItem = null
+	for child in inventoryGrid.get_children():
+		if (child is Item
+				and child.slotData.itemData.type == "Ammo"
+				and child.slotData.itemData.file == weaponData.ammo.file
+				and child.slotData.amount > 0):
+			ammoItem = child
+			break
+	if ammoItem == null:
+		return
+
+	gameData.isOccupied = true
+
+	await get_tree().create_timer(0.2, false).timeout
+	if gameData.isDead:
+		gameData.isOccupied = false
+		return
+
+	weaponItem.slotData.chamber = true
+	weaponItem.UpdateDetails()
+	weaponItem.UpdateSprite()
+
+	ammoItem.slotData.amount -= 1
+	if ammoItem.slotData.amount <= 0:
+		inventoryGrid.Pick(ammoItem)
+		ammoItem.queue_free()
+	else:
+		ammoItem.UpdateDetails()
+
+	rigManager.UpdateRig(false)
+	var slotName = weaponSlot.name
+	var rigIsActive = ((slotName == "Primary" and gameData.primary)
+			or (slotName == "Secondary" and gameData.secondary))
+
+	PlayAmmoLoad()
+	_PlayChargeAnimation(weaponItem.slotData, rigIsActive)
+
+	gameData.isOccupied = false
+
+
+# --- _KeyboardUnloadChamber -------------------------------------------------
+# Eject the chambered round from the active weapon without opening the
+# inventory UI. With a magazine attached, only the chambered round is returned
+# to the inventory (same behaviour as ClearChamberWithMag). Without a
+# magazine, the chamber round plus any remaining loose rounds are returned
+# (same behaviour as UnloadWeapon). Triggers the rig slide-lock animation.
+
+func _KeyboardUnloadChamber(weaponItem, weaponSlot) -> void:
+	var weaponData: WeaponData = weaponItem.slotData.itemData as WeaponData
+	if weaponData == null or weaponData.ammo == null:
+		return
+	if not weaponItem.slotData.chamber:
+		return
+
+	var ammoData = weaponItem.slotData.itemData.ammo
+
+	gameData.isOccupied = true
+
+	await get_tree().create_timer(0.2, false).timeout
+	if gameData.isDead:
+		gameData.isOccupied = false
+		return
+
+	if _hasMagazine(weaponItem.slotData):
+		# Only eject the chambered round; leave magazine ammo intact.
+		weaponItem.slotData.chamber = false
+		weaponItem.UpdateDetails()
+		weaponItem.UpdateSprite()
+
+		var newSlotData = SlotData.new()
+		newSlotData.itemData = ammoData
+		newSlotData.amount = 1
+
+		if not AutoStack(newSlotData, inventoryGrid):
+			Create(newSlotData, inventoryGrid, true)
+			PlayStack()
+	else:
+		# Eject chamber round plus any remaining loose rounds.
+		var ammoToUnload = weaponItem.slotData.amount + 1
+		weaponItem.slotData.amount = 0
+		weaponItem.slotData.chamber = false
+		weaponItem.UpdateDetails()
+		weaponItem.UpdateSprite()
+
+		var newSlotData = SlotData.new()
+		newSlotData.itemData = ammoData
+		newSlotData.amount = ammoToUnload
+
+		if not AutoStack(newSlotData, inventoryGrid):
+			Create(newSlotData, inventoryGrid, true)
+			PlayStack()
+
+	_RefreshRig(weaponSlot.name, weaponItem.slotData, false, true)
+
+	gameData.isOccupied = false

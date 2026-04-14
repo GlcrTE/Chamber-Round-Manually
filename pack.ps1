@@ -31,6 +31,10 @@ Add-Dir  $zip "mods/"
 Add-Dir  $zip "mods/chamberroundmanually/"
 Add-File $zip "mods/chamberroundmanually/Main.gd"       "$modRoot\mods\chamberroundmanually\Main.gd"
 Add-File $zip "mods/chamberroundmanually/Interface.gd"  "$modRoot\mods\chamberroundmanually\Interface.gd"
+Add-File $zip "mods/chamberroundmanually/Config.gd"  "$modRoot\mods\chamberroundmanually\Config.gd"
+Add-File $zip "mods/chamberroundmanually/ModSettings.gd"  "$modRoot\mods\chamberroundmanually\ModSettings.gd"
+Add-File $zip "mods/chamberroundmanually/ModSettings.tres"  "$modRoot\mods\chamberroundmanually\ModSettings.tres"
+
 
 $zip.Dispose()
 $stream.Dispose()
