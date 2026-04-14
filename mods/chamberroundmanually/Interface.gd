@@ -552,8 +552,13 @@ func _physics_process(delta):
 # rather than every frame for the duration the key is held.
 
 func _PollKeyboardShortcut() -> void:
-	if gameData.interface or gameData.isOccupied or gameData.isDead:
+	var isDown = Input.is_key_pressed(modSettings.action_key as Key)
+
+	if not isDown:
 		_shortcutKeyWasDown = false
+		return
+
+	if gameData.interface or gameData.isOccupied or gameData.isDead:
 		return
 
 	var modifier_ok = false
@@ -563,13 +568,9 @@ func _PollKeyboardShortcut() -> void:
 		2: modifier_ok = Input.is_key_pressed(KEY_ALT)
 		3: modifier_ok = Input.is_key_pressed(KEY_CTRL)
 
-	var isDown = Input.is_key_pressed(modSettings.action_key as Key)
-
-	if isDown and modifier_ok and not _shortcutKeyWasDown:
+	if modifier_ok and not _shortcutKeyWasDown:
 		_shortcutKeyWasDown = true
 		_TryKeyboardChamberToggle()
-	elif not isDown:
-		_shortcutKeyWasDown = false
 
 
 # --- _TryKeyboardChamberToggle ----------------------------------------------

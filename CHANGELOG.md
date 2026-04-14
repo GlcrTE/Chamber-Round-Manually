@@ -1,5 +1,8 @@
 ## CHANGELOG
 
+### v2.1.1
+bugfix it is not possible anymore to spam the chamber action while holding down the action Key.
+
 ### v2.1.0
 MCM Integration added
 Added the ability to automatically load a round to the chamber with Shift + R. The same Shift+R removes the bullet again (If you do this with a loaded magazine the gun won't shoot keep in mind)
