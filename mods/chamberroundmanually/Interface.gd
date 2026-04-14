@@ -123,9 +123,19 @@ func _AttachMagazineEmpty(weaponItem) -> void:
 # Consume one round from the dragged ammo stack and mark the weapon as having
 # a round in the chamber. If the stack reaches zero it is removed from the
 # grid; otherwise it is returned to its original slot.
+#
+# Guard against inventory-close during progress: if the player presses Tab
+# while the progress bar is running, Close() calls Drop(itemDragged) which
+# frees the UI item and then Reset() clears returnGrid/returnPosition. We
+# capture both before the await so they survive Reset(), and we check
+# is_instance_valid(combineItem) after the await — if it was freed we abort
+# cleanly without chambering (the ammo is already on the ground).
 
 func ChamberRound(targetItem):
 	var combineItem = itemDragged
+	# Save return context now — Close() → Reset() will null these during the await.
+	var savedReturnGrid = returnGrid
+	var savedReturnPosition = returnPosition
 
 	gameData.isOccupied = true
 
@@ -136,6 +146,16 @@ func ChamberRound(targetItem):
 	if gameData.isDead: return
 
 	if activeProgress:
+		# If the inventory was closed mid-progress, Close() has already called
+		# Drop(itemDragged) which freed the UI item. Abort without chambering
+		# so we don't touch a freed object or corrupt weapon state.
+		if not is_instance_valid(combineItem):
+			activeProgress.queue_free()
+			activeProgress = null
+			gameData.isOccupied = false
+			Reset()
+			return
+
 		# Mark the weapon chamber as loaded.
 		targetItem.slotData.chamber = true
 		targetItem.UpdateDetails()
@@ -146,11 +166,15 @@ func ChamberRound(targetItem):
 
 		if combineItem.slotData.amount <= 0:
 			# Stack is empty — remove it entirely.
-			if returnGrid:
-				returnGrid.Pick(combineItem)
+			# Use savedReturnGrid: Reset() may have cleared returnGrid already.
+			if savedReturnGrid:
+				savedReturnGrid.Pick(combineItem)
 			combineItem.queue_free()
 		else:
 			# Return the reduced stack to its original grid position.
+			# Restore saved context so Return() can place the item correctly.
+			returnGrid = savedReturnGrid
+			returnPosition = savedReturnPosition
 			Return(combineItem)
 			combineItem.UpdateDetails()
 
