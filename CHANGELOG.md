@@ -2,6 +2,7 @@
 
 ### 2.0.3
 improved overall code structure
+bugfix calling close() while being in the inventory while putting a round into the chamber no longer causes a softlock
 
 ### v2.0.2
 fixed an ammo duplication bug when inserting a loaded magazin to a weapon that has an empty chamber

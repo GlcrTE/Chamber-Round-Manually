@@ -48,6 +48,14 @@ func Hover():
 # If a chamber action is pending, perform it and return early so the base
 # Release() never runs.
 #
+# ChamberRound is launched as a detached coroutine (no await), then Reset()
+# is called immediately — matching the base game's Combine() → Load() →
+# Reset() pattern. This nulls itemDragged before Tab could trigger Close(),
+# so the ammo is never dropped to the world. The progress timer continues
+# running even after the inventory closes, and the ammo is placed back into
+# the inventory grid when it completes — identical behaviour to the base
+# game's magazine-loading action.
+#
 # Magazine-attach correction: the base Item.Combine() auto-chambers a round
 # when attaching a loaded magazine to an empty-chamber weapon (sets
 # chamber=true, amount=mag-1). This happens before UpdateRig fires, so
@@ -63,9 +71,11 @@ func Hover():
 func Release():
 	if canChamberRound:
 		if hoverItem:
-			await ChamberRound(hoverItem)
+			ChamberRound(hoverItem)
+			Reset()
 		elif hoverSlot && hoverSlot.get_child_count() != 0:
-			await ChamberRound(hoverSlot.get_child(0))
+			ChamberRound(hoverSlot.get_child(0))
+			Reset()
 		else:
 			Return(itemDragged)
 			Reset()
@@ -124,20 +134,28 @@ func _AttachMagazineEmpty(weaponItem) -> void:
 # a round in the chamber. If the stack reaches zero it is removed from the
 # grid; otherwise it is returned to its original slot.
 #
-# Guard against inventory-close during progress: if the player presses Tab
-# while the progress bar is running, Close() calls Drop(itemDragged) which
-# frees the UI item and then Reset() clears returnGrid/returnPosition. We
-# capture both before the await so they survive Reset(), and we check
-# is_instance_valid(combineItem) after the await — if it was freed we abort
-# cleanly without chambering (the ammo is already on the ground).
+# Mirrors the base game's Load() pattern to survive inventory-close (Tab):
+#   1. combineItem is hidden immediately so it is not visible while loading.
+#   2. returnGrid/returnPosition are captured before the coroutine suspends,
+#      because Release() calls Reset() right after launching this function,
+#      which nulls those instance variables.
+#   3. Close() (called by Tab) checks "if itemDragged:" — but itemDragged is
+#      null by then (Reset() cleared it), so the ammo is never dropped.
+#   4. The progress timer runs even while the inventory is hidden. On
+#      completion the reduced stack is placed back into the inventory grid
+#      using the saved return context, identical to how Load() works.
 
 func ChamberRound(targetItem):
 	var combineItem = itemDragged
-	# Save return context now — Close() → Reset() will null these during the await.
+	# Capture return context before Release() calls Reset() (which nulls these).
 	var savedReturnGrid = returnGrid
 	var savedReturnPosition = returnPosition
 
 	gameData.isOccupied = true
+
+	# Hide the ammo item while the progress runs. Release() is about to call
+	# Reset() → itemDragged = null, so Close() can no longer Drop() this item.
+	combineItem.hide()
 
 	# Show the red-tinted progress circle over the weapon item (matches the
 	# same visual used when clearing the chamber via UnloadWeapon).
@@ -146,16 +164,6 @@ func ChamberRound(targetItem):
 	if gameData.isDead: return
 
 	if activeProgress:
-		# If the inventory was closed mid-progress, Close() has already called
-		# Drop(itemDragged) which freed the UI item. Abort without chambering
-		# so we don't touch a freed object or corrupt weapon state.
-		if not is_instance_valid(combineItem):
-			activeProgress.queue_free()
-			activeProgress = null
-			gameData.isOccupied = false
-			Reset()
-			return
-
 		# Mark the weapon chamber as loaded.
 		targetItem.slotData.chamber = true
 		targetItem.UpdateDetails()
@@ -166,17 +174,16 @@ func ChamberRound(targetItem):
 
 		if combineItem.slotData.amount <= 0:
 			# Stack is empty — remove it entirely.
-			# Use savedReturnGrid: Reset() may have cleared returnGrid already.
 			if savedReturnGrid:
 				savedReturnGrid.Pick(combineItem)
 			combineItem.queue_free()
 		else:
-			# Return the reduced stack to its original grid position.
-			# Restore saved context so Return() can place the item correctly.
-			returnGrid = savedReturnGrid
-			returnPosition = savedReturnPosition
-			Return(combineItem)
+			# Return the reduced stack to its original grid position using the
+			# saved context (instance vars were nulled by Reset() in Release()).
+			combineItem.show()
 			combineItem.UpdateDetails()
+			combineItem.global_position = savedReturnPosition
+			savedReturnGrid.Place(combineItem)
 
 		# When the weapon is actively held in a rig slot, trigger the rig update
 		# so the slide/hammer animations reflect the new chambered state.
